@@ -30,9 +30,7 @@ whatsapp.on("ready", () => {
 });
 
 async function getChatGPTResponse(text) {
-  const apiUrl = `https://guruapi.tech/api/chatgpt?text=${encodeURIComponent(
-    text
-  )}`;
+  const apiUrl = `${process.env.CHATGPT_API_URL}?text=${encodeURIComponent(text)}`;
   try {
     const response = await axios.get(apiUrl);
     if (response.data.status) {
@@ -47,7 +45,7 @@ async function getChatGPTResponse(text) {
 }
 
 async function getDALLEImage(text) {
-  const apiUrl = `https://aemt.me/dalle?text=${encodeURIComponent(text)}`;
+  const apiUrl = `${process.env.DALLE_API_URL}?text=${encodeURIComponent(text)}`;
   try {
     const response = await axios.get(apiUrl, { responseType: "arraybuffer" });
     const data = Buffer.from(response.data, "binary").toString("base64");
