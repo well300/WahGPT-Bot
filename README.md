@@ -1,4 +1,4 @@
-# WhatsApp Chat Bot with ChatGPT and DALL·E Integration 🤖💬🎨
+# WahGPT is a WhatsApp Chat Bot with ChatGPT and DALL·E Integration 🤖💬🎨
 ## Overview 🚀
 This JavaScript script utilizes the `whatsapp-web.js` library to create a WhatsApp chat bot with advanced features. The bot interacts with users, generates DALL·E images, and utilizes the ChatGPT API for intelligent responses.
 
