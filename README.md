@@ -113,9 +113,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - Thanks to the authors of `whatsapp-web.js` for providing a powerful library for WhatsApp Web automation.
 - Appreciation to OpenAI for ChatGPT and DALL·E APIs.
-
-## Contact
-
-For any inquiries or issues, please contact [testbywell300@gmail.com].
+---
 
 Happy Chatting with WahGPT! 🤖🚀
