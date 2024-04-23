@@ -38,7 +38,7 @@ WahGPT is a WhatsApp chatbot built using the `whatsapp-web.js` library, allowing
 4. Create a `.env` file in the root directory with the following content:
 
    ```env
-   CHATGPT_API_URL=https://guruapi.tech/api/chatgpt
+   CHATGPT_API_URL=https://ultimetron.guruapi.tech/gpt4
    DALLE_API_URL=https://aemt.me/dalle
    ```
 
