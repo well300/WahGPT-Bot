@@ -90,27 +90,37 @@ client.ev.on('message-new', async (message) => {
 });
 
 async function getChatGPTResponse(text) {
+    const apiUrl = `${process.env.CHATGPT_API_URL}?prompt=${encodeURIComponent(text)}`
     try {
-        const response = await axios.get(`${CHATGPT_API_URL}?prompt=${encodeURIComponent(text)}`);
+        const response = await axios.get(apiUrl)
         if (response.data.status) {
-            return response.data.result;
+            return response.data.result.reply
         } else {
-            throw new Error(`API error: ${response.data.result}`);
+            throw new Error('API error')
         }
     } catch (error) {
-        logger.error(`❌ Error calling ChatGPT API: ${error.message}`);
-        throw new Error('Error calling ChatGPT API');
+        console.error(
+            chalk.red(`❌ Error calling ChatGPT API: ${error.message}`)
+        )
+        throw new Error('Error calling ChatGPT API')
     }
 }
 
 async function getDALLEImage(text) {
+    const apiUrl = `${process.env.DALLE_API_URL}?q=${encodeURIComponent(text)}`
     try {
-        const response = await axios.get(`${DALLE_API_URL}?text=${encodeURIComponent(text)}`, { responseType: 'arraybuffer' });
-        const data = Buffer.from(response.data, 'binary').toString('base64');
-        return data;
+        const response = await axios.get(apiUrl)
+        const buffer = (
+            await axios.get(response.data.result, {
+                responseType: 'arraybuffer'
+            })
+        ).data
+        return buffer
     } catch (error) {
-        logger.error(`❌ Error calling DALL·E API: ${error.message}`);
-        throw new Error('Error calling DALL·E API');
+        console.error(
+            chalk.red(`❌ Error calling DALL·E API: ${error.message}`)
+        )
+        throw new Error('Error calling DALL·E API')
     }
 }
 
