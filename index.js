@@ -1,95 +1,22 @@
-import { makeWASocket } from '@whiskeysockets/baileys';
-import pino from 'pino';
-import axios from 'axios';
-import dotenv from 'dotenv';
+import {
+    jidDecode,
+    makeWASocket,
+    DisconnectReason,
+    useMultiFileAuthState,
+    fetchLatestBaileysVersion
+} from '@whiskeysockets/baileys'
+import {
+    Boom
+} from '@hapi/boom'
+import * as dotenv from 'dotenv'
+import axios from 'axios'
+import P from 'pino'
 
-dotenv.config();
+dotenv.config()
 
-const CHATGPT_API_URL = process.env.CHATGPT_API_URL;
-const DALLE_API_URL = process.env.DALLE_API_URL;
+connect()
 
-const logger = pino({ level: 'silent' });
-
-const client = makeWASocket({
-    logger: logger 
-});
-
-client.ev.on('conn', async (status) => {
-    logger.info('📱 Scan the QR code below to log in:');
-    logger.info(status.qrCode);
-});
-
-client.ev.on('open', () => {
-    logger.info('✅ Authentication complete');
-});
-
-client.ev.on('message-new', async (message) => {
-    const sender = message.key.remoteJid;
-    const messageContent = message.message.conversation;
-
-    logger.info(`👤 From: ${sender}`);
-    logger.info(`💬 Message: ${messageContent}`);
-
-    // Handle message content and respond accordingly
-    // Example:
-    if (messageContent.startsWith('/dalle')) {
-        const text = messageContent.replace('/dalle', '').trim();
-        try {
-            const imageBase64 = await getDALLEImage(text);
-
-            if (imageBase64) {
-                const media = {
-                    key: {
-                        fromMe: true,
-                        participant: '0@s.whatsapp.net',
-                        remoteJid: sender
-                    },
-                    message: {
-                        imageMessage: {
-                            url: `data:image/jpeg;base64,${imageBase64}`,
-                            mimetype: 'image/jpeg',
-                            caption: 'DALL·E generated image'
-                        }
-                    }
-                };
-
-                logger.info('📸 Sending DALL·E generated image');
-                client.interface.send('sendMessage', { ...media });
-            } else {
-                throw new Error('Failed to generate DALL·E image');
-            }
-        } catch (dalleError) {
-            logger.error(`❌ ${dalleError.message}`);
-            client.interface.send('sendMessage', {
-                key: {
-                    fromMe: true,
-                    participant: '0@s.whatsapp.net',
-                    remoteJid: sender
-                },
-                message: {
-                    conversation: '❌ Failed to generate DALL·E image'
-                }
-            });
-        }
-    } else {
-        const response = await getChatGPTResponse(messageContent);
-        const emojiResponse = addEmojis(response);
-
-        logger.info(`✉️ Response: ${emojiResponse}`);
-        client.interface.send('sendMessage', {
-            key: {
-                fromMe: true,
-                participant: '0@s.whatsapp.net',
-                remoteJid: sender
-            },
-            message: {
-                conversation: emojiResponse
-            }
-        });
-    }
-});
-
-async function getChatGPTResponse(text) {
+const getChatGPTResponse = async (text) => {
     const apiUrl = `${process.env.CHATGPT_API_URL}?prompt=${encodeURIComponent(text)}`
     try {
         const response = await axios.get(apiUrl)
@@ -106,7 +33,7 @@ async function getChatGPTResponse(text) {
     }
 }
 
-async function getDALLEImage(text) {
+const getDALLEImage = async (text) => {
     const apiUrl = `${process.env.DALLE_API_URL}?q=${encodeURIComponent(text)}`
     try {
         const response = await axios.get(apiUrl)
@@ -124,34 +51,133 @@ async function getDALLEImage(text) {
     }
 }
 
-function addEmojis(response) {
-    // Add emojis based on conditions or keywords in the response
-    let emojiResponse = '*🤖 Response:* ' + response;
-
-    if (response.toLowerCase().includes('hello')) {
-        emojiResponse += ' 👋';
-    } else if (response.toLowerCase().includes('thank you')) {
-        emojiResponse += ' 🙏';
-    } else if (response.toLowerCase().includes('good morning')) {
-        emojiResponse += ' 🌅';
-    } else if (response.toLowerCase().includes('good night')) {
-        emojiResponse += ' 🌃';
-    } else if (response.toLowerCase().includes('good evening')) {
-        emojiResponse += ' 🌆';
-    } else if (response.toLowerCase().includes('good afternoon')) {
-        emojiResponse += ' ☀️';
-    } else if (response.toLowerCase().includes('good day')) {
-        emojiResponse += ' 🌤️';
-    }
-
-    return emojiResponse;
+const sanitizeJids = (jid) => {
+    if (/:\d+@/gi.test(jid)) {
+        const decoded = jidDecode(jid)
+        if (decoded?.server && decoded.user) {
+            return format('%s@%s', decoded.user, decoded.server)
+        }
+        return jid
+    } else return jid
 }
 
-async function main() {
-    await client.connect();
-}
+const connect = async () => {
+    const {
+        state,
+        saveCreds
+    } = await useMultiFileAuthState('session')
+    const socket = makeWASocket({
+        version: (await fetchLatestBaileysVersion()).version,
+        auth: state,
+        logger: P({
+            level: 'silent'
+        }),
+        printQRInTerminal: true
+    })
+    socket.ev.on('connection.update', async (update) => {
+        const {
+            connection,
+            lastDisconnect,
+            qr
+        } = update
+        const {
+            statusCode
+        } = new Boom(lastDisconnect?.error).output
+        if (qr) console.log('Qr has been generated!!')
 
-main().catch((error) => {
-    logger.error(`❗️ ${error.message}`);
-    process.exit(1);
-});
+        if (connection === 'close') {
+            if (statusCode !== DisconnectReason.loggedOut)
+                setTimeout(() => connect(), 3000)
+            else {
+                console.log(
+                    'Disconnected! Something went wrong during connection!'
+                )
+                setTimeout(() => connect(), 3000)
+            }
+        }
+        if (connection === 'connecting') console.log('Connecting to the phone!')
+        if (connection === 'open') console.log('Connected to the phone >.<!')
+    })
+    socket.ev.on('messages.upsert', async ({
+        messages
+    }) => {
+        const {
+            message
+        } = JSON.parse(JSON.stringify(messages[0]))
+        const content = (() => {
+            if (message?.buttonsResponseMessage)
+                return message?.buttonsResponseMessage?.selectedButtonId || ''
+            if (message?.listResponseMessage)
+                return (
+                    message?.listResponseMessage?.singleSelectReply
+                    ?.selectedRowId || ''
+                )
+            return message?.conversation ?
+                message.conversation :
+                this.supportedMediaMessages.includes(type) ?
+                this.supportedMediaMessages
+                .map((type) => message?.[type]?.caption)
+                .filter((caption) => caption)[0] || '' :
+                message?.extendedTextMessage?.text ?
+                message?.extendedTextMessage.text :
+                ''
+        })()
+        const array =
+            (message?.[type]?.contextInfo?.mentionedJid ? message[type]?.contextInfo?.mentionedJid : []) || []
+        const mentioned = array.filter(Boolean)
+        if (quoted?.sender) M.mentioned.push(M.quoted.sender)
+        if (mentioned.includes(sanitizeJid(socket.user?.id ?? '')) && !content.startsWith(process.env.PREFIX)) {
+            try {
+                const text = await getChatGPTResponse(content)
+                return socket.sendMessage(
+                    M.from, {
+                        text
+                    }, {
+                        quoted: M
+                    }
+                )
+            } catch (err) {
+                socket.sendMessage(
+                    M.from, {
+                        text: err.message
+                    }, {
+                        quoted: M
+                    }
+                )
+            }
+        }
+
+        const [cmd, ...args] = body.replace(process.env.PREFIX, '').split(' ')
+        const arg = args.join(' ')
+        switch (cmd) {
+            case 'dalle':
+                if (!arg)
+                    return socket.sendMessage(
+                        M.from, {
+                            text: 'You did not provide any term!!'
+                        }, {
+                            quoted: M
+                        }
+                    )
+                try {
+                    const image = await getDALLEImage(arg)
+                    return socket.sendMessage(
+                        M.from, {
+                            image
+                        }, {
+                            quoted: M
+                        }
+                    )
+                } catch (err) {
+                    socket.sendMessage(
+                        M.from, {
+                            text: err.message
+                        }, {
+                            quoted: M
+                        }
+                    )
+                }
+        }
+    })
+    socket.ev.on('creds.update', saveCreds)
+}
