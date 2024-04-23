@@ -1,147 +1,56 @@
-import { makeWASocket } from '@whiskeysockets/baileys';
-import pino from 'pino';
-import axios from 'axios';
-import dotenv from 'dotenv';
+import ws from '@whiskeysockets/baileys'
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = ws
+import { remove } from 'fs-extra'
+import { serialize } from './lib/waClient.js'
+import * as dotenv from 'dotenv'
+import axios from 'axios'
+import P from 'pino'
+import { Boom } from '@hapi/boom'
 
-dotenv.config();
+dotenv.config()
 
-const CHATGPT_API_URL = process.env.CHATGPT_API_URL;
-const DALLE_API_URL = process.env.DALLE_API_URL;
+const start = async () => {
+    const { state, saveCreds } = await useMultiFileAuthState("session")
+    const client = makeWASocket({
+        version: (await fetchLatestBaileysVersion()).version,
+        auth: state,
+        logger: P({ level: 'silent' }),
+        printQRInTerminal: true
+    })
 
-const logger = pino({ level: 'silent' });
-
-const client = makeWASocket({
-    logger: logger 
-});
-
-client.ev.on('conn', async (status) => {
-    logger.info('📱 Scan the QR code below to log in:');
-    logger.info(status.qrCode);
-});
-
-client.ev.on('open', () => {
-    logger.info('✅ Authentication complete');
-});
-
-client.ev.on('message-new', async (message) => {
-    const sender = message.key.remoteJid;
-    const messageContent = message.message.conversation;
-
-    logger.info(`👤 From: ${sender}`);
-    logger.info(`💬 Message: ${messageContent}`);
-
-    // Handle message content and respond accordingly
-    // Example:
-    if (messageContent.startsWith('/dalle')) {
-        const text = messageContent.replace('/dalle', '').trim();
-        try {
-            const imageBase64 = await getDALLEImage(text);
-
-            if (imageBase64) {
-                const media = {
-                    key: {
-                        fromMe: true,
-                        participant: '0@s.whatsapp.net',
-                        remoteJid: sender
-                    },
-                    message: {
-                        imageMessage: {
-                            url: `data:image/jpeg;base64,${imageBase64}`,
-                            mimetype: 'image/jpeg',
-                            caption: 'DALL·E generated image'
-                        }
-                    }
-                };
-
-                logger.info('📸 Sending DALL·E generated image');
-                client.interface.send('sendMessage', { ...media });
-            } else {
-                throw new Error('Failed to generate DALL·E image');
+    //connection updates
+    client.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect } = update
+        if (update.qr) console.log(`Scan the QR code!!`)
+        if (connection === 'close') {
+            const { statusCode } = new Boom(lastDisconnect?.error).output
+            if (statusCode !== DisconnectReason.loggedOut) setTimeout(() => start(), 3000)
+            else {
+                console.log('Disconnected :"(')
+                await remove("session")
+                console.log('Starting...')
+                setTimeout(() => start(), 3000)
             }
-        } catch (dalleError) {
-            logger.error(`❌ ${dalleError.message}`);
-            client.interface.send('sendMessage', {
-                key: {
-                    fromMe: true,
-                    participant: '0@s.whatsapp.net',
-                    remoteJid: sender
-                },
-                message: {
-                    conversation: '❌ Failed to generate DALL·E image'
-                }
-            });
         }
-    } else {
-        const response = await getChatGPTResponse(messageContent);
-        const emojiResponse = addEmojis(response);
-
-        logger.info(`✉️ Response: ${emojiResponse}`);
-        client.interface.send('sendMessage', {
-            key: {
-                fromMe: true,
-                participant: '0@s.whatsapp.net',
-                remoteJid: sender
-            },
-            message: {
-                conversation: emojiResponse
-            }
-        });
-    }
-});
-
-async function getChatGPTResponse(text) {
-    try {
-        const response = await axios.get(`${CHATGPT_API_URL}?prompt=${encodeURIComponent(text)}`);
-        if (response.data.status) {
-            return response.data.result;
-        } else {
-            throw new Error(`API error: ${response.data.result}`);
+        if (connection === 'connecting') console.log('Connecting to WhatsApp!!')
+        if (connection === 'open') console.log('Connected to WhatsApp')
+        
+    })
+    client.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return
+        const M = serialize(JSON.parse(JSON.stringify(messages[0])), client)
+        if (M.quoted?.participant) M.mentions.push(M.quoted.participant)
+        console.log(M.body)
+        if (
+            M.mentions.includes(client.user.id.split(':')[0] + '@s.whatsapp.net')
+        ) {
+            const text = await axios.get(`https://oni-chan-unique-api.vercel.app/gpt4?text=${M.body}`)
+            M.reply(text.data.result)
         }
-    } catch (error) {
-        logger.error(`❌ Error calling ChatGPT API: ${error.message}`);
-        throw new Error('Error calling ChatGPT API');
-    }
+
+
+    })
+    client.ev.on('creds.update', saveCreds)
 }
 
-async function getDALLEImage(text) {
-    try {
-        const response = await axios.get(`${DALLE_API_URL}?text=${encodeURIComponent(text)}`, { responseType: 'arraybuffer' });
-        const data = Buffer.from(response.data, 'binary').toString('base64');
-        return data;
-    } catch (error) {
-        logger.error(`❌ Error calling DALL·E API: ${error.message}`);
-        throw new Error('Error calling DALL·E API');
-    }
-}
-
-function addEmojis(response) {
-    // Add emojis based on conditions or keywords in the response
-    let emojiResponse = '*🤖 Response:* ' + response;
-
-    if (response.toLowerCase().includes('hello')) {
-        emojiResponse += ' 👋';
-    } else if (response.toLowerCase().includes('thank you')) {
-        emojiResponse += ' 🙏';
-    } else if (response.toLowerCase().includes('good morning')) {
-        emojiResponse += ' 🌅';
-    } else if (response.toLowerCase().includes('good night')) {
-        emojiResponse += ' 🌃';
-    } else if (response.toLowerCase().includes('good evening')) {
-        emojiResponse += ' 🌆';
-    } else if (response.toLowerCase().includes('good afternoon')) {
-        emojiResponse += ' ☀️';
-    } else if (response.toLowerCase().includes('good day')) {
-        emojiResponse += ' 🌤️';
-    }
-
-    return emojiResponse;
-}
-
-async function main() {
-    await client.connect();
-}
-
-main().catch((error) => {
-    logger.error(`❗️ ${error.message}`);
-    process.exit(1);
-});
+start()
