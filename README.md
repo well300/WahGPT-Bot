@@ -1,12 +1,11 @@
-# WahGPT - WhatsApp Chatbot with GPT Integration
+# WahGPT - WhatsApp Chatbot with GPT4 Api Integration
 
-WahGPT is a WhatsApp chatbot built using the `whatsapp-web.js` library, allowing users to interact with an intelligent chatbot powered by GPT (ChatGPT) and create DALL·E-generated images. This README provides a comprehensive explanation of the code structure and functionality.
+WahGPT is a WhatsApp chatbot built using the `Baileys` library, allowing users to interact with an intelligent chatbot powered by GPT (ChatGPT4). This README provides a comprehensive explanation of the code structure and functionality.
 
 ## Features
 
-- **WhatsApp Integration:** Utilizes `whatsapp-web.js` to connect to the WhatsApp Web platform, enabling the bot to send and receive messages.
+- **WhatsApp Integration:** Utilizes `Baileys` to connect to the WhatsApp Web platform, enabling the bot to send and receive messages.
 - **GPT Integration:** Communicates with the ChatGPT API to generate responses based on user input.
-- **DALL·E Integration:** Generates images using the DALL·E API in response to specific commands.
 
 ## Getting Started
 
@@ -35,22 +34,13 @@ WahGPT is a WhatsApp chatbot built using the `whatsapp-web.js` library, allowing
    npm install
    ```
 
-4. Create a `.env` file in the root directory with the following content:
-
-   ```env
-   CHATGPT_API_URL=https://ultimetron.guruapi.tech/gpt4
-   DALLE_API_URL=https://aemt.me/dalle
-   ```
-
-   Replace the URLs with the actual endpoints you want to use.
-
-5. Run the application:
+4. Run the application:
 
    ```bash
    npm start
    ```
 
-6. Scan the QR code displayed with your WhatsApp Web to authenticate.
+5. Scan the QR code displayed with your WhatsApp Web to authenticate.
 
 ## Code Structure
 
